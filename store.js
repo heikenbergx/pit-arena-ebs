@@ -20,6 +20,14 @@ let cache = {};       // login -> snapshot
 let dirty = false;
 let writeTimer = null;
 
+// ── Panel action inbox (Phase 2) ─────────────────────────────────────────────
+// Transient, in-memory queue of actions the panel asked for (equip / lock).
+// The overlay drains it every couple seconds and runs each one. Not persisted:
+// if the server restarts, a couple of in-flight taps are lost — harmless (the
+// viewer just taps again). Capped so a spammer can't grow it without bound.
+let actions = [];
+const MAX_ACTIONS = 500;
+
 function load() {
   try {
     const raw = fs.readFileSync(DATA_FILE, 'utf8');
@@ -76,6 +84,14 @@ module.exports = {
   all() { return cache; },
 
   count() { return Object.keys(cache).length; },
+
+  // ── action inbox ──
+  enqueueAction(action) {
+    if (actions.length >= MAX_ACTIONS) actions.shift();   // drop oldest under flood
+    actions.push(Object.assign({ ts: Date.now() }, action));
+  },
+  drainActions() { const a = actions; actions = []; return a; },
+  pendingActions() { return actions.length; },
 
   // Flush on shutdown so nothing in the debounce window is lost.
   flush() { persist(); }

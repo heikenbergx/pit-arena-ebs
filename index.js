@@ -118,6 +118,46 @@ app.get('/me', async (req, res) => {
   }
 });
 
+// ── ACTION (Phase 2): panel asks to equip / lock one of the viewer's OWN items ──
+// Auth: the viewer's Twitch JWT — the login is derived from the token, so a
+// viewer can only ever act on their own stash, never someone else's.
+//   body: { type:'equip'|'lock', index:1..N, name?:string, want?:boolean }
+app.post('/action', async (req, res) => {
+  try {
+    let login = null;
+    if (DEV_LOGIN_QUERY && req.query.login) {
+      login = String(req.query.login).toLowerCase();
+    } else {
+      const claims = twitch.verifyPanelToken(req.get('authorization'));
+      if (!claims.user_id) return res.json({ ok: true, state: 'needs_identity' });
+      login = await twitch.loginForUserId(claims.user_id);
+      if (!login) return res.json({ ok: true, state: 'no_login' });
+    }
+    const b = req.body || {};
+    const type = String(b.type || '');
+    const index = parseInt(b.index, 10);
+    if (type !== 'equip' && type !== 'lock') return res.status(400).json({ ok: false, error: 'bad type' });
+    if (!(index >= 1 && index <= 50)) return res.status(400).json({ ok: false, error: 'bad index' });
+    store.enqueueAction({
+      login, type, index,
+      name: b.name ? String(b.name).slice(0, 80) : null,
+      want: (typeof b.want === 'boolean') ? b.want : null
+    });
+    res.json({ ok: true, queued: true });
+  } catch (e) {
+    console.error('[/action]', e.message);
+    res.status(401).json({ ok: false, error: e.message });
+  }
+});
+
+// ── ACTIONS drain: the overlay pulls & clears the pending action queue ────────
+// Auth: OVERLAY_SECRET (same trust as the write side).
+app.get('/actions', (req, res) => {
+  const auth = (req.get('authorization') || '').replace(/^Bearer\s+/i, '').trim();
+  if (!OVERLAY_SECRET || auth !== OVERLAY_SECRET) return res.status(401).json({ error: 'nope' });
+  res.json({ ok: true, actions: store.drainActions() });
+});
+
 // Debug read (guarded by overlay secret) — handy while wiring things up.
 app.get('/players/:login', (req, res) => {
   const auth = (req.get('authorization') || '').replace(/^Bearer\s+/i, '').trim();
@@ -130,6 +170,8 @@ const server = app.listen(PORT, () => {
   console.log(`[pit-arena-ebs] listening on :${PORT}`);
   console.log(`  overlay write : POST /players/:login   (Bearer OVERLAY_SECRET)`);
   console.log(`  panel read    : GET  /me                (Bearer twitch JWT)`);
+  console.log(`  panel action  : POST /action           (Bearer twitch JWT)`);
+  console.log(`  overlay drain : GET  /actions           (Bearer OVERLAY_SECRET)`);
   console.log(`  twitch secret configured: ${twitch.hasSecret}`);
 });
 
