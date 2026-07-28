@@ -85,6 +85,15 @@ module.exports = {
 
   count() { return Object.keys(cache).length; },
 
+  // Wipe EVERY player snapshot (season reset). Returns how many were cleared.
+  clear() {
+    const n = Object.keys(cache).length;
+    cache = {};
+    actions = [];        // drop any pending panel taps too
+    scheduleWrite();
+    return n;
+  },
+
   // ── action inbox ──
   enqueueAction(action) {
     if (actions.length >= MAX_ACTIONS) actions.shift();   // drop oldest under flood

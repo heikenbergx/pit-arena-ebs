@@ -158,6 +158,17 @@ app.get('/actions', (req, res) => {
   res.json({ ok: true, actions: store.drainActions() });
 });
 
+// ── ADMIN: wipe every player snapshot (season reset) ─────────────────────────
+// Auth: OVERLAY_SECRET (same trust as the write side). The overlay's !pitreset
+// calls this after clearing its own save, so panels show empty for everyone.
+app.post('/admin/clear', (req, res) => {
+  const auth = (req.get('authorization') || '').replace(/^Bearer\s+/i, '').trim();
+  if (!OVERLAY_SECRET || auth !== OVERLAY_SECRET) return res.status(401).json({ error: 'nope' });
+  const cleared = store.clear();
+  console.log(`[admin] season reset — cleared ${cleared} players`);
+  res.json({ ok: true, cleared });
+});
+
 // Debug read (guarded by overlay secret) — handy while wiring things up.
 app.get('/players/:login', (req, res) => {
   const auth = (req.get('authorization') || '').replace(/^Bearer\s+/i, '').trim();
