@@ -135,14 +135,25 @@ app.post('/action', async (req, res) => {
     }
     const b = req.body || {};
     const type = String(b.type || '');
-    const index = parseInt(b.index, 10);
-    if (type !== 'equip' && type !== 'lock') return res.status(400).json({ ok: false, error: 'bad type' });
-    if (!(index >= 1 && index <= 50)) return res.status(400).json({ ok: false, error: 'bad index' });
-    store.enqueueAction({
-      login, type, index,
-      name: b.name ? String(b.name).slice(0, 80) : null,
-      want: (typeof b.want === 'boolean') ? b.want : null
-    });
+    if (type !== 'equip' && type !== 'lock' && type !== 'upgrade' && type !== 'battle') return res.status(400).json({ ok: false, error: 'bad type' });
+    const action = { login, type };
+    if (type === 'battle') {
+      // queue a fight — tier picks the difficulty (viewer only ever fights as themselves)
+      const tier = String(b.tier || 'battle').toLowerCase().replace(/[^a-z]/g, '').slice(0, 12);
+      action.tier = ['battle', 'lt', 'boss', 'nightmare'].indexOf(tier) >= 0 ? tier : 'battle';
+    } else if (type === 'upgrade') {
+      // enhance an equipped slot — identified by its slot key/abbr, not a stash index
+      const slot = String(b.slot || '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 10);
+      if (!slot) return res.status(400).json({ ok: false, error: 'bad slot' });
+      action.slot = slot;
+    } else {
+      const index = parseInt(b.index, 10);
+      if (!(index >= 1 && index <= 50)) return res.status(400).json({ ok: false, error: 'bad index' });
+      action.index = index;
+      action.name = b.name ? String(b.name).slice(0, 80) : null;
+      if (type === 'lock') action.want = (typeof b.want === 'boolean') ? b.want : null;
+    }
+    store.enqueueAction(action);
     res.json({ ok: true, queued: true });
   } catch (e) {
     console.error('[/action]', e.message);
