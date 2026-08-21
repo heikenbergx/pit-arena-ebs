@@ -135,9 +135,18 @@ app.post('/action', async (req, res) => {
     }
     const b = req.body || {};
     const type = String(b.type || '');
-    if (type !== 'equip' && type !== 'lock' && type !== 'upgrade' && type !== 'battle') return res.status(400).json({ ok: false, error: 'bad type' });
+    const ALLOWED = ['equip', 'lock', 'upgrade', 'battle', 'train', 'buy'];
+    if (ALLOWED.indexOf(type) < 0) return res.status(400).json({ ok: false, error: 'bad type' });
     const action = { login, type };
-    if (type === 'battle') {
+    if (type === 'train') {
+      // no payload — the overlay runs the same !train path, which does its own
+      // gold and level-cap checks. Nothing here can be spoofed into a free level.
+    } else if (type === 'buy') {
+      // shop slot number (stock is 3, but leave headroom if it ever grows)
+      const n = parseInt(b.index, 10);
+      if (!(n >= 1 && n <= 10)) return res.status(400).json({ ok: false, error: 'bad shop slot' });
+      action.index = n;
+    } else if (type === 'battle') {
       // queue a fight — tier picks the difficulty (viewer only ever fights as themselves)
       const tier = String(b.tier || 'battle').toLowerCase().replace(/[^a-z]/g, '').slice(0, 12);
       action.tier = ['battle', 'lt', 'boss', 'nightmare'].indexOf(tier) >= 0 ? tier : 'battle';
