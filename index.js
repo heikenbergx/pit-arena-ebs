@@ -121,7 +121,7 @@ app.get('/me', async (req, res) => {
 // ── ACTION (Phase 2): panel asks to equip / lock one of the viewer's OWN items ──
 // Auth: the viewer's Twitch JWT — the login is derived from the token, so a
 // viewer can only ever act on their own stash, never someone else's.
-//   body: { type:'equip'|'lock', index:1..N, name?:string, want?:boolean }
+//   body: { type:'equip'|'lock'|'upgrade'|'battle'|'train'|'buy'|'ascend', index:1..N, name?:string, want?:boolean }
 app.post('/action', async (req, res) => {
   try {
     let login = null;
@@ -135,12 +135,15 @@ app.post('/action', async (req, res) => {
     }
     const b = req.body || {};
     const type = String(b.type || '');
-    const ALLOWED = ['equip', 'lock', 'upgrade', 'battle', 'train', 'buy'];
+    const ALLOWED = ['equip', 'lock', 'upgrade', 'battle', 'train', 'buy', 'ascend'];
     if (ALLOWED.indexOf(type) < 0) return res.status(400).json({ ok: false, error: 'bad type' });
     const action = { login, type };
     if (type === 'train') {
       // no payload — the overlay runs the same !train path, which does its own
       // gold and level-cap checks. Nothing here can be spoofed into a free level.
+    } else if (type === 'ascend') {
+      // no payload — the overlay runs the same !ascend path, which refuses below the
+      // level cap and at max ascension. Nothing to spoof; worst case is a no-op.
     } else if (type === 'buy') {
       // shop slot number (stock is 3, but leave headroom if it ever grows)
       const n = parseInt(b.index, 10);
@@ -149,7 +152,7 @@ app.post('/action', async (req, res) => {
     } else if (type === 'battle') {
       // queue a fight — tier picks the difficulty (viewer only ever fights as themselves)
       const tier = String(b.tier || 'battle').toLowerCase().replace(/[^a-z]/g, '').slice(0, 12);
-      action.tier = ['battle', 'lt', 'boss', 'nightmare'].indexOf(tier) >= 0 ? tier : 'battle';
+      action.tier = ['battle', 'lt', 'boss', 'nightmare', 'raid'].indexOf(tier) >= 0 ? tier : 'battle';
     } else if (type === 'upgrade') {
       // enhance an equipped slot — identified by its slot key/abbr, not a stash index
       const slot = String(b.slot || '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 10);
