@@ -73,11 +73,20 @@ async function refreshAccessToken() {
 async function fetchLeaderboard(period, retrying = false) {
   if (!accessToken) await refreshAccessToken();
 
+  // Twitch rejects any period other than "all" unless started_at is
+  // supplied. Sending the current instant is enough — Twitch snaps it
+  // to whichever period contains it, so this always means "today".
+  // Fractional seconds are not accepted, hence the trim.
+  let url = `https://api.twitch.tv/helix/bits/leaderboard?count=100&period=${period}`;
+  if (period !== 'all') {
+    const startedAt = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+    url += `&started_at=${encodeURIComponent(startedAt)}`;
+  }
+
   // The broadcaster comes from the token, so no broadcaster id needed.
-  const res = await fetch(
-    `https://api.twitch.tv/helix/bits/leaderboard?count=100&period=${period}`,
-    { headers: { 'Client-Id': CLIENT_ID, Authorization: `Bearer ${accessToken}` } }
-  );
+  const res = await fetch(url, {
+    headers: { 'Client-Id': CLIENT_ID, Authorization: `Bearer ${accessToken}` },
+  });
 
   if (res.status === 401 && !retrying) {
     await refreshAccessToken();
