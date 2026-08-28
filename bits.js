@@ -3,8 +3,8 @@
 
    Mounts two routes onto an existing Express app:
 
-     GET /bits    running channel bits total, read by the overlay
-     GET /bits/health   whether the poller has a reading
+     GET /bits          bits totals, read by the overlay
+     GET /bits/health   whether the poller is configured and working
 
    Add to your server with two lines:
 
@@ -19,8 +19,17 @@
      BITS_REFRESH_TOKEN
      BITS_POLL_SECONDS      optional, defaults to 20
 
-   If the variables are missing the module logs a warning and does
-   nothing. It will never take the extension backend down with it.
+   Reads two leaderboards each pass:
+
+     totalBits   period=all  — every bit the channel ever took
+     dayBits     period=day  — bits taken today, resets midnight PT
+
+   The all-time board is capped at the top 100 cheerers of all time,
+   which a long-running channel fills up, so anyone outside that
+   hundred is invisible in it. Today's board only ranks people who
+   cheered today, so it is almost never full and misses nobody. The
+   overlay uses the day figure for a session bar and the all-time
+   figure for periods that span more than one day.
    ================================================================= */
 
 const CLIENT_ID = process.env.BITS_CLIENT_ID;
@@ -29,7 +38,14 @@ const REFRESH_TOKEN = process.env.BITS_REFRESH_TOKEN;
 const POLL_MS = Number(process.env.BITS_POLL_SECONDS || 20) * 1000;
 
 let accessToken = null;
-let cache = { totalBits: null, leaders: 0, updatedAt: null, error: null };
+let cache = {
+  totalBits: null,
+  dayBits: null,
+  leaders: 0,
+  dayLeaders: 0,
+  updatedAt: null,
+  error: null,
+};
 let timer = null;
 
 async function refreshAccessToken() {
@@ -54,48 +70,56 @@ async function refreshAccessToken() {
   return accessToken;
 }
 
-async function fetchLeaderboard(retrying = false) {
+async function fetchLeaderboard(period, retrying = false) {
   if (!accessToken) await refreshAccessToken();
 
-  // period=all so the window never rolls over underneath the overlay.
-  // The broadcaster is taken from the token, so no broadcaster id is
-  // needed here.
+  // The broadcaster comes from the token, so no broadcaster id needed.
   const res = await fetch(
-    'https://api.twitch.tv/helix/bits/leaderboard?count=100&period=all',
+    `https://api.twitch.tv/helix/bits/leaderboard?count=100&period=${period}`,
     { headers: { 'Client-Id': CLIENT_ID, Authorization: `Bearer ${accessToken}` } }
   );
 
   if (res.status === 401 && !retrying) {
     await refreshAccessToken();
-    return fetchLeaderboard(true);
+    return fetchLeaderboard(period, true);
   }
 
-  if (!res.ok) throw new Error(`leaderboard ${res.status}: ${await res.text()}`);
+  if (!res.ok) throw new Error(`leaderboard ${period} ${res.status}: ${await res.text()}`);
 
   const data = await res.json();
   const rows = data.data || [];
 
-  // Caps at the top 100 cheerers, so on a very large channel this
-  // total is a floor rather than an exact figure.
   return {
-    totalBits: rows.reduce((sum, row) => sum + (row.score || 0), 0),
+    bits: rows.reduce((sum, row) => sum + (row.score || 0), 0),
     leaders: rows.length,
   };
 }
 
 async function poll() {
   try {
-    const { totalBits, leaders } = await fetchLeaderboard();
+    const [all, day] = await Promise.all([
+      fetchLeaderboard('all'),
+      fetchLeaderboard('day'),
+    ]);
 
-    // The total should only ever climb. A drop means a partial or
-    // cached response, and passing it on would make the overlay think
-    // bits had been refunded.
-    if (cache.totalBits !== null && totalBits < cache.totalBits) {
-      console.warn(`[bits] ignoring drop ${cache.totalBits} -> ${totalBits}`);
+    // The all-time total should only ever climb. A drop means a
+    // partial or cached response, and passing it on would make the
+    // overlay think bits had been refunded.
+    if (cache.totalBits !== null && all.bits < cache.totalBits) {
+      console.warn(`[bits] ignoring all-time drop ${cache.totalBits} -> ${all.bits}`);
       return;
     }
 
-    cache = { totalBits, leaders, updatedAt: new Date().toISOString(), error: null };
+    // The day figure legitimately falls to zero at midnight Pacific,
+    // so it gets no such guard.
+    cache = {
+      totalBits: all.bits,
+      dayBits: day.bits,
+      leaders: all.leaders,
+      dayLeaders: day.leaders,
+      updatedAt: new Date().toISOString(),
+      error: null,
+    };
   } catch (err) {
     console.error('[bits]', err.message);
     cache.error = err.message;
@@ -130,7 +154,9 @@ function mountBits(app) {
     }
     res.json({
       totalBits: cache.totalBits,
+      dayBits: cache.dayBits,
       leaders: cache.leaders,
+      dayLeaders: cache.dayLeaders,
       updatedAt: cache.updatedAt,
       stale: cache.error !== null,
     });
@@ -141,6 +167,10 @@ function mountBits(app) {
       ok: cache.totalBits !== null,
       configured: missing.length === 0,
       missingEnvVars: missing,
+      totalBits: cache.totalBits,
+      dayBits: cache.dayBits,
+      leaders: cache.leaders,
+      dayLeaders: cache.dayLeaders,
       updatedAt: cache.updatedAt,
       error: cache.error,
     });
@@ -154,7 +184,7 @@ function mountBits(app) {
 
   poll();
   timer = setInterval(poll, POLL_MS);
-  console.log(`[bits] polling every ${POLL_MS / 1000}s`);
+  console.log(`[bits] polling every ${POLL_MS / 1000}s (all-time + today)`);
 }
 
 function stopBits() {
