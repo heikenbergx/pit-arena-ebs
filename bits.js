@@ -103,26 +103,30 @@ async function poll() {
 }
 
 function mountBits(app) {
-  const missing = ['BITS_CLIENT_ID', 'BITS_CLIENT_SECRET', 'BITS_REFRESH_TOKEN']
-    .filter((k) => !process.env[k]);
-
-  if (missing.length) {
-    console.warn(`[bits] disabled, missing env: ${missing.join(', ')}`);
-    return;
-  }
-
-  // The overlay runs on streamelements.com, so these two routes set
-  // their own CORS header rather than relying on ALLOWED_ORIGINS.
-  // Nothing returned here is sensitive.
+  // The overlay runs on streamelements.com, so these routes set their
+  // own CORS header rather than relying on ALLOWED_ORIGINS. Nothing
+  // returned here is sensitive.
   const cors = (req, res, next) => {
     res.set('Access-Control-Allow-Origin', '*');
     res.set('Cache-Control', 'no-store');
     next();
   };
 
+  const missing = ['BITS_CLIENT_ID', 'BITS_CLIENT_SECRET', 'BITS_REFRESH_TOKEN']
+    .filter((k) => !process.env[k]);
+
+  // Routes are registered either way. A missing config should say so
+  // out loud rather than produce a mystery 404.
   app.get('/bits', cors, (req, res) => {
+    if (missing.length) {
+      return res.status(503).json({
+        error: 'bits poller not configured',
+        missingEnvVars: missing,
+        hint: 'Add these in the Render Environment tab, then redeploy.',
+      });
+    }
     if (cache.totalBits === null) {
-      return res.status(503).json({ error: cache.error || 'no reading yet' });
+      return res.status(503).json({ error: cache.error || 'no reading yet, try again in a few seconds' });
     }
     res.json({
       totalBits: cache.totalBits,
@@ -133,8 +137,20 @@ function mountBits(app) {
   });
 
   app.get('/bits/health', cors, (req, res) => {
-    res.json({ ok: cache.totalBits !== null, updatedAt: cache.updatedAt, error: cache.error });
+    res.json({
+      ok: cache.totalBits !== null,
+      configured: missing.length === 0,
+      missingEnvVars: missing,
+      updatedAt: cache.updatedAt,
+      error: cache.error,
+    });
   });
+
+  if (missing.length) {
+    console.warn(`[bits] NOT POLLING — missing env vars: ${missing.join(', ')}`);
+    console.warn('[bits] /bits will return a 503 explaining this until they are set.');
+    return;
+  }
 
   poll();
   timer = setInterval(poll, POLL_MS);
