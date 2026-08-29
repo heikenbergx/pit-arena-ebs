@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Heik's Battle Arena — Command List</title>
+<meta name="description" content="Every chat command for Heik's Battle Arena, plus how levels, gear, armour sets, relics and the raid boss actually work.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Metamorphous&family=Oswald:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#efe6d4; --dim:#a1957c; --faint:#6d6353;
+    --bg:#0f0c08; --panel:#17120c; --panel2:#1d160e; --line:#332818;
+    --gold:#e6c766; --amber:#f0a63f; --ember:#d4552c; --deep:#a82c22;
+    --green:#8ad06f; --blue:#5ec8ff; --violet:#c07adf; --pink:#e77ad6;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth; scroll-padding-top:88px}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased; text-wrap:pretty;
+  }
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:0;
+    background:
+      radial-gradient(1100px 520px at 50% -140px, rgba(240,166,63,.13), transparent 70%),
+      radial-gradient(700px 400px at 100% 100%, rgba(168,44,34,.07), transparent 70%);
+  }
+  .wrap{position:relative; z-index:1; max-width:1000px; margin:0 auto; padding:0 18px 90px}
+  a{color:var(--amber); text-decoration:none; border-bottom:1px solid rgba(240,166,63,.32)}
+  a:hover{color:var(--gold); border-bottom-color:var(--gold)}
+  code,kbd{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+
+  /* ── masthead ─────────────────────────────────────────── */
+  header{padding:54px 0 30px; text-align:center}
+  .brand{display:flex; flex-direction:column; align-items:center; gap:2px; line-height:1}
+  .brand-h{
+    font-family:Oswald,sans-serif; font-weight:600; font-size:clamp(15px,3.4vw,21px);
+    letter-spacing:.34em; text-indent:.34em; color:#f3ead6;
+  }
+  .brand-b{
+    font-family:Metamorphous,serif; font-size:clamp(34px,8.4vw,62px); letter-spacing:.02em;
+    background:linear-gradient(180deg,#ffdc5c 0%,#ffab2e 38%,#f4642a 72%,#d8391a 100%);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    filter:drop-shadow(0 3px 0 rgba(0,0,0,.55));
+  }
+  .swords{color:var(--ember); font-size:20px; letter-spacing:.5em; text-indent:.5em; margin-top:12px; opacity:.75}
+  .tagline{color:var(--dim); max-width:56ch; margin:16px auto 0; font-size:16.5px}
+
+  /* ── quick start ──────────────────────────────────────── */
+  .start{
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px;
+    margin:34px 0 8px;
+  }
+  .step{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px 18px}
+  .step .n{
+    font-family:Oswald,sans-serif; font-weight:700; font-size:12px; letter-spacing:.16em;
+    color:var(--ember); margin-bottom:6px;
+  }
+  .step b{font-family:ui-monospace,monospace; color:var(--gold); font-weight:600}
+  .step p{margin:4px 0 0; color:var(--dim); font-size:14.5px; line-height:1.55}
+
+  /* ── sticky search / nav ──────────────────────────────── */
+  .bar{
+    position:sticky; top:0; z-index:20; margin:34px -18px 0; padding:12px 18px 11px;
+    background:rgba(15,12,8,.93); backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--line);
+  }
+  .search{
+    width:100%; padding:12px 15px; border-radius:9px; font-size:16px;
+    background:#120e09; border:1px solid #3d3020; color:var(--ink); font-family:inherit;
+  }
+  .search::placeholder{color:#5f5645}
+  .search:focus{outline:none; border-color:var(--amber); box-shadow:0 0 0 3px rgba(240,166,63,.13)}
+  .chips{display:flex; flex-wrap:wrap; gap:7px; margin-top:10px}
+  .chip{
+    font-family:Oswald,sans-serif; font-size:11.5px; font-weight:500; letter-spacing:.1em;
+    padding:5px 11px; border-radius:20px; cursor:pointer; white-space:nowrap;
+    background:#1a140d; border:1px solid #3a2e1d; color:var(--dim);
+  }
+  .chip:hover{color:var(--ink); border-color:#584327}
+  .chip[aria-pressed="true"]{background:var(--gold); border-color:var(--gold); color:#221806}
+
+  /* ── sections ─────────────────────────────────────────── */
+  section{margin-top:46px}
+  h2{
+    font-family:Oswald,sans-serif; font-weight:600; font-size:13px; letter-spacing:.24em;
+    color:var(--amber); margin:0 0 4px; text-transform:uppercase;
+  }
+  .sub{color:var(--faint); font-size:14.5px; margin:0 0 16px; max-width:70ch}
+
+  /* ── command rows ─────────────────────────────────────── */
+  .cmds{border:1px solid var(--line); border-radius:11px; overflow:hidden; background:var(--panel)}
+  .cmd{
+    display:grid; grid-template-columns:minmax(160px,232px) 1fr; gap:6px 22px;
+    padding:14px 18px; border-top:1px solid #241c11;
+  }
+  .cmd:first-child{border-top:none}
+  .cmd:nth-child(even){background:var(--panel2)}
+  .cmd .name{font-family:ui-monospace,monospace; font-size:15px; color:var(--gold); font-weight:600; word-break:break-word}
+  .cmd .name .arg{color:var(--faint); font-weight:400}
+  .cmd .desc{color:#c9bda6; font-size:15px; line-height:1.55}
+  .cmd .desc em{color:var(--dim); font-style:normal}
+  .tag{
+    display:inline-block; font-family:Oswald,sans-serif; font-size:10px; font-weight:600;
+    letter-spacing:.11em; padding:2px 7px; border-radius:4px; margin-left:7px; vertical-align:2px;
+  }
+  .t-lvl{background:rgba(94,200,255,.13); color:var(--blue); border:1px solid rgba(94,200,255,.28)}
+  .t-mod{background:rgba(232,122,214,.11); color:var(--pink); border:1px solid rgba(232,122,214,.26)}
+  .t-new{background:rgba(138,208,111,.12); color:var(--green); border:1px solid rgba(138,208,111,.28)}
+  .empty{padding:26px 18px; color:var(--faint); text-align:center; font-size:15px}
+
+  /* ── extension hero (the recommended way to play) ─────── */
+  .ext{
+    margin:34px 0 0; border:1px solid #4a3a1e; border-radius:12px; overflow:hidden;
+    background:linear-gradient(180deg,#1d160e,#150f09);
+    box-shadow:0 0 0 1px rgba(240,166,63,.07), 0 18px 40px -24px rgba(0,0,0,.9);
+  }
+  .ext-h{
+    display:flex; flex-wrap:wrap; align-items:baseline; gap:10px 14px;
+    padding:16px 22px 14px; border-bottom:1px solid var(--line); background:rgba(240,166,63,.05);
+  }
+  .ext-h .kicker{
+    font-family:Oswald,sans-serif; font-weight:600; font-size:11px; letter-spacing:.2em;
+    color:#221806; background:var(--gold); border-radius:4px; padding:3px 8px;
+  }
+  .ext-h h2{margin:0; font-size:19px; letter-spacing:.05em; color:var(--ink); text-transform:none}
+  .ext-b{padding:18px 22px 20px}
+  .ext-lead{margin:0 0 16px; font-size:16.5px; color:#d8ccb4; max-width:64ch}
+  .ext-lead b{color:var(--gold); font-weight:600}
+  .ext-cols{display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:16px 26px}
+  .ext-col h3{
+    font-family:Oswald,sans-serif; font-weight:600; font-size:12px; letter-spacing:.16em;
+    color:var(--amber); margin:0 0 8px; text-transform:uppercase;
+  }
+  .ext-col ul{margin:0; padding-left:18px; color:#c2b69f; font-size:14.5px; line-height:1.62}
+  .ext-col li{margin-bottom:5px}
+  .ext-col li b{color:var(--ink); font-weight:600}
+  .ext-note{
+    margin:18px 0 0; padding:11px 14px; border-radius:8px; font-size:14px; color:var(--dim);
+    background:#120e09; border:1px solid #2c2214;
+  }
+
+  /* ── explainers ───────────────────────────────────────── */
+  .cards{display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:13px}
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:11px; padding:18px 20px}
+  .card h3{
+    font-family:Oswald,sans-serif; font-weight:600; font-size:15px; letter-spacing:.06em;
+    margin:0 0 9px; color:var(--gold);
+  }
+  .card p{margin:0 0 10px; color:#c2b69f; font-size:14.5px; line-height:1.6}
+  .card p:last-child{margin-bottom:0}
+  .card strong{color:var(--ink); font-weight:600}
+  .card code{color:var(--amber); font-size:13.5px}
+  .rar{display:flex; flex-wrap:wrap; gap:6px 14px; margin:2px 0 10px; font-size:14px}
+  .rar span{display:flex; align-items:center; gap:6px; color:#c2b69f}
+  .dot{width:9px; height:9px; border-radius:50%; flex:none}
+
+  table.mini{width:100%; border-collapse:collapse; font-size:14px; margin:2px 0 4px}
+  table.mini td{padding:5px 0; border-top:1px solid #241c11; color:#c2b69f; vertical-align:top}
+  table.mini tr:first-child td{border-top:none}
+  table.mini td:first-child{color:var(--ink); white-space:nowrap; padding-right:16px; font-weight:600}
+
+  details.mods{margin-top:14px; border:1px solid var(--line); border-radius:11px; background:var(--panel); overflow:hidden}
+  details.mods summary{
+    padding:15px 18px; cursor:pointer; font-family:Oswald,sans-serif; font-size:13px;
+    letter-spacing:.16em; color:var(--dim); text-transform:uppercase; list-style:none;
+  }
+  details.mods summary::-webkit-details-marker{display:none}
+  details.mods summary::after{content:" ▾"; color:var(--faint)}
+  details.mods[open] summary::after{content:" ▴"}
+  details.mods summary:hover{color:var(--ink)}
+  details.mods .cmds{border:none; border-top:1px solid var(--line); border-radius:0}
+
+  footer{margin-top:60px; padding-top:22px; border-top:1px solid var(--line); color:var(--faint); font-size:13.5px; text-align:center}
+
+  @media (max-width:620px){
+    .cmd{grid-template-columns:1fr; padding:13px 15px}
+    .cmd .name{font-size:15.5px}
+    header{padding:38px 0 22px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">
+      <div class="brand-h">HEIK'S</div>
+      <div class="brand-b">BATTLE ARENA</div>
+    </div>
+    <div class="swords">⚔ ⚔ ⚔</div>
+    <p class="tagline">A living RPG that runs in chat. Your fighter keeps their level, gear and record between streams — build them up over months, one command at a time.</p>
+  </header>
+
+  <div class="ext">
+    <div class="ext-h">
+      <span class="kicker">START HERE</span>
+      <h2>Play from the Twitch panel — no typing</h2>
+    </div>
+    <div class="ext-b">
+      <p class="ext-lead">Everything on this page can be done in chat, but the <b>Twitch extension panel</b> is the easier way. It shows <b>your own fighter</b> — your gear, your stash, your gold — and you tap instead of typing. Nothing you do in the panel shows up in chat, so you can browse your bag mid-fight without spamming the stream.</p>
+
+      <div class="ext-cols">
+        <div class="ext-col">
+          <h3>Where to find it</h3>
+          <ul>
+            <li><b>Desktop:</b> just under the video player, below the stream title. Click the panel and your fighter loads.</li>
+            <li><b>Phone / tablet:</b> open the channel in the Twitch app, then the <b>Extensions</b> tab under the stream.</li>
+            <li>First time only, Twitch asks you to <b>grant access</b> so it knows which fighter is yours. One tap, then it remembers you.</li>
+          </ul>
+        </div>
+        <div class="ext-col">
+          <h3>What you can do there</h3>
+          <ul>
+            <li><b>Queue any fight</b> — hunt, veteran, boss, nightmare, or the raid boss.</li>
+            <li><b>Compare before you equip.</b> Hold or hover a stash piece and it shows exactly what changes, including which <b>armour set bonuses</b> it would switch on or drag down.</li>
+            <li><b>Train, ascend, and buy</b> from the arena shop without looking up a command.</li>
+            <li><b>See your real stats</b> — what's capped, what's still gaining, and why.</li>
+            <li><b>Rearrange it.</b> The ▲▼ arrows on each section move it up or down, and it stays that way for you.</li>
+          </ul>
+        </div>
+      </div>
+
+      <p class="ext-note">Chat commands still work exactly as before, and always will — the list below is the full reference. Use whichever you prefer; they're the same game.</p>
+    </div>
+  </div>
+
+  <div class="start">
+    <div class="step">
+      <div class="n">STEP 1</div>
+      <b>!checkin</b>
+      <p>Creates your fighter and pays you gold. Do it once per stream — every hundredth check-in is a guaranteed rare or better.</p>
+    </div>
+    <div class="step">
+      <div class="n">STEP 2</div>
+      <b>!battle</b>
+      <p>Queue for a hunt. The arena picks a beast that suits your level. Win or lose you earn XP; wins pay gold and loot.</p>
+    </div>
+    <div class="step">
+      <div class="n">STEP 3</div>
+      <b>!stash</b> → <b>!equip 1</b>
+      <p>Drops land in your bag, not on your body. Look at them, then wear the ones you want.</p>
+    </div>
+  </div>
+
+  <div class="bar">
+    <input id="q" class="search" type="search" placeholder="Search commands — try “gear”, “sell”, “raid”…" autocomplete="off" spellcheck="false">
+    <div class="chips" id="chips"></div>
+  </div>
+
+  <div id="list"></div>
+
+  <section id="how">
+    <h2>How it all works</h2>
+    <p class="sub">The short version of every system, so you know what you're spending gold on.</p>
+    <div class="cards">
+
+      <div class="card">
+        <h3>Levels &amp; XP</h3>
+        <p>Every fight pays XP, win or lose. The curve gets steeper as you climb, and the cap is <strong>level 50</strong>.</p>
+        <p>Higher-level hunters earn more XP from tough monsters and less from easy ones, so farming fodder forever stops paying.</p>
+        <p><code>!train</code> converts gold straight into XP when you'd rather buy progress than fight for it.</p>
+      </div>
+
+      <div class="card">
+        <h3>The five fight tiers</h3>
+        <table class="mini">
+          <tr><td>Fodder</td><td>any level · the reliable win</td></tr>
+          <tr><td>Veteran</td><td>level 5 · tougher, better loot</td></tr>
+          <tr><td>Lieutenant</td><td>level 10 · a genuine test</td></tr>
+          <tr><td>Boss</td><td>level 20 · best odds at a unique</td></tr>
+          <tr><td>Nightmare</td><td>level 30 · strips your best stats</td></tr>
+        </table>
+        <p>Monsters scale to <em>you</em>, so nothing ever becomes filler — but the higher tiers stay genuinely dangerous.</p>
+      </div>
+
+      <div class="card">
+        <h3>Gear rarity</h3>
+        <div class="rar">
+          <span><i class="dot" style="background:#9a9282"></i>Common</span>
+          <span><i class="dot" style="background:#5ec8ff"></i>Magic</span>
+          <span><i class="dot" style="background:#ffd24a"></i>Rare</span>
+          <span><i class="dot" style="background:#c07adf"></i>Unique</span>
+          <span><i class="dot" style="background:#2fbf3e"></i>Set</span>
+          <span><i class="dot" style="background:#e77ad6"></i>Relic</span>
+        </div>
+        <p>Seven slots: weapon, helm, armour, gloves, boots, ring, amulet. Items are <strong>sidegrades with tradeoffs</strong>, not a straight ladder — a big damage weapon may cost you armour.</p>
+        <p>Each item also has an item level (<code>iLv</code>). Drops are banded to your level, so you get gear you can actually use.</p>
+      </div>
+
+      <div class="card">
+        <h3>Lesser · standard · Greater</h3>
+        <p>Many items exist in three power versions. <strong>Lesser</strong> pieces drop for newer fighters, <strong>Greater</strong> ones for veterans, with the plain version in between.</p>
+        <p>The name tells you which you've got. A <em>Greater Bonewrought Cuirass</em> is the endgame version of the same piece.</p>
+      </div>
+
+      <div class="card">
+        <h3>Armour sets</h3>
+        <p>Five sets of five pieces — helm, armour, gloves, boots, amulet. Wearing 2, 3, 4 or 5 pieces of one set stacks escalating <strong>set bonuses</strong> on top of the pieces themselves.</p>
+        <p><strong>Mixed versions still count.</strong> A Lesser piece and a Greater piece both complete the set — but the bonus pays out at your <em>weakest</em> piece. So finish a Lesser set early, then lift it one slot at a time.</p>
+        <p><code>!armor bonewrought</code> shows any set's pieces, bonuses and what you're missing.</p>
+      </div>
+
+      <div class="card">
+        <h3>Stat caps — you're never wasting a drop</h3>
+        <p>Crit, dodge, lifesteal and attack speed all have ceilings so nobody becomes untouchable.</p>
+        <p>They're <strong>soft</strong> caps: everything up to about half the ceiling counts in full, and past that each extra point gives a little less. You always gain something from a second piece — you just can't reach the ceiling from one lucky drop.</p>
+      </div>
+
+      <div class="card">
+        <h3>Your stash</h3>
+        <p>Every drop goes to your bag first, never straight onto your body. <code>!stash</code> to look, <code>!equip 3</code> to wear, <code>!sell 3</code> for gold.</p>
+        <p>The bag has a limit — when it fills, the oldest <em>unlocked</em> item is auto-sold. <code>!lockstash 3</code> pins anything you don't want scrapped.</p>
+      </div>
+
+      <div class="card">
+        <h3>Enhancing</h3>
+        <p><code>!upgrade weapon</code> spends gold to add a ★ to the piece you're wearing, up to five. Each star raises that item's own stats by 20% and shrinks its drawbacks.</p>
+        <p>Stars stay with the item — if it's stolen or sold, they go with it. Selling refunds part of what you sank in. Set bonuses are never inflated by stars.</p>
+      </div>
+
+      <div class="card">
+        <h3>PvP &amp; wagers</h3>
+        <p><code>!challenge @someone</code> for a straight duel — the winner may steal a piece of the loser's gear.</p>
+        <p><code>!duel @someone helm</code> stakes a specific slot instead. They answer with <code>!stake</code> to put up their own, and both sides have to accept before anyone swings.</p>
+      </div>
+
+      <div class="card">
+        <h3>Relics</h3>
+        <p>One-of-a-kind items. Only one exists in the whole arena and only one person can hold each. They can't be sold or given away — they change hands by <strong>defeat</strong>, or when the bearer runs <code>!droprelic</code>.</p>
+        <p>Go idle too long and your relic returns to the pool for someone else to win. <code>!relics</code> shows who holds what.</p>
+      </div>
+
+      <div class="card">
+        <h3>Raid boss</h3>
+        <p>One enormous shared monster. <code>!raidboss</code> takes your turn against it — and <strong>its health does not reset</strong> between fighters. Everyone chips the same pool down together.</p>
+        <p>Dying costs you nothing; your turn just ends and your damage stands. Rewards scale with the share of the pool you removed, so a level 8 is paid on the same curve as a veteran. There's a short cooldown between turns, waived once the boss is nearly dead so anyone can pile in for the kill.</p>
+      </div>
+
+      <div class="card">
+        <h3>Ascension</h3>
+        <p>At the level cap, <code>!ascend</code> resets you to level 1 and grants a permanent stat bump plus a roman-numeral badge (✦ III) that rides next to your level forever.</p>
+        <p>It also earns a <strong>naming token</strong>: <code>!nameitem</code> mints a brand-new item — named by you — into the drop pool for everybody, in all three power versions.</p>
+        <p>Each ascension taxes your XP gain a little, so every climb back up is longer than the last.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <footer>
+    ⚔ &nbsp;Heik's Battle Arena&nbsp; ⚔<br>
+    Type any command straight into chat. Fighters, gear and records persist between streams.
+  </footer>
+</div>
+
+<script>
+const GROUPS = [
+  { id:'start', title:'Getting started', sub:'The three you need on day one.', cmds:[
+    ['!checkin', '', 'Creates your fighter if you don\'t have one, and pays gold scaled to your level. Also a shot at a magic-or-better drop. Every 100th check-in is a guaranteed rare or better.'],
+    ['!battle', '', 'Queue for a beast hunt. The arena picks the tier that fits your level. Win for gear, gold and XP — a loss still pays XP and a consolation coin.'],
+    ['!stash', '', 'Open your bag. Every drop lands here first, numbered, so nothing ever overwrites what you\'re wearing.'],
+    ['!mygear', '', 'Your full loadout: level, XP bar, PvE and PvP records, and all seven equipped pieces.'],
+  ]},
+  { id:'fight', title:'Fighting', sub:'Pick your poison. Higher tiers hit harder and drop better.', cmds:[
+    ['!battle', '', 'Auto-picks the toughest tier you\'ve unlocked and can reasonably handle.'],
+    ['!battlelt', '', 'Force a Lieutenant hunt — a genuine test, and it carries affixes.', 'lvl 10'],
+    ['!battleboss', '', 'Force a Boss hunt — the hardest standard fight and the best odds at a unique. Bosses always carry affixes, and sometimes an exploitable weakness.', 'lvl 20'],
+    ['!nightmare', '', 'Summon a Nightmare: an elite Boss that strips your crutches — it can ignore your dodge, deny your crits, or nullify your lifesteal. Pays far more XP and gold.', 'lvl 30'],
+    ['!raidboss', '', 'Take your turn against the shared raid boss. Its health carries over from the last fighter, and dying is free.'],
+    ['!challenge', '@user', 'Challenge another fighter to a duel. The winner may steal a piece of the loser\'s gear.'],
+    ['!accept', '', 'Accept a challenge aimed at you.'],
+    ['!decline', '', 'Turn down a challenge. <em>Some relic bearers are not allowed to decline.</em>'],
+    ['!cancelchallenge', '', 'Back out of a challenge you sent, or one aimed at you that\'s gone stale. Either party can use it.'],
+    ['!duel', '@user &lt;slot&gt;', 'A wager duel — you stake a specific slot instead of leaving it to chance. e.g. <code>!duel @rey helm</code>'],
+    ['!stake', '&lt;slot&gt;', 'Answer a wager duel by putting up your own piece in that slot. Both sides must accept before the fight starts.'],
+    ['!battlequeue', '', 'Show who\'s waiting to fight.'],
+  ]},
+  { id:'char', title:'Your character', sub:'Everything about you and everyone else.', cmds:[
+    ['!stats', '[@user]', 'Your full combat sheet — every stat, its total, and how close you are to each cap. Add a name to inspect someone else.'],
+    ['!gear', '@user', 'Inspect another fighter\'s loadout.'],
+    ['!recap', '', 'A blow-by-blow of your last fight: damage dealt and taken, crits, dodges, XP, gold and any drop.'],
+    ['!compare', '&lt;#&gt;', 'Compare a stash item against the one you\'re wearing in that slot, stat by stat, before you commit.'],
+    ['!train', '', 'Spend gold for an instant XP burst. The fastest way to close out a level you\'re nearly through.'],
+    ['!ascend', '', 'At the level cap only. Reset to level 1 for a permanent stat bump, a ✦ badge, and a token to name a brand-new item into the game.'],
+    ['!topbattle', '', 'The Champions board — top fighters by level, with win and death columns.'],
+    ['!roster', '[on|off]', 'The full fighter board, including ascension badges. Stays up until you turn it off.'],
+  ]},
+  { id:'gear', title:'Gear &amp; stash', sub:'Drops go to your bag. What happens next is up to you.', cmds:[
+    ['!stash', '', 'List your bag — every item numbered, with its stats and lock state.'],
+    ['!equip', '&lt;#&gt;', 'Wear a stash item. Whatever you were wearing goes back to the bag, keeping its stars and its lock.'],
+    ['!sell', '&lt;#&gt;', 'Sell a stash item for gold. Refunds part of anything you\'d sunk into enhancing it. Locked items and relics can\'t be sold.'],
+    ['!lockstash', '&lt;#&gt;', 'Pin a bag item so the full-bag auto-sell can never scrap it. Run it again to unlock.'],
+    ['!upgrade', '&lt;slot&gt;', 'Spend gold to add a ★ to the piece you\'re wearing, up to five. Each star raises that item\'s own stats by 20% and shrinks its drawbacks. e.g. <code>!upgrade weapon</code>'],
+    ['!autoequip', '[on|off]', 'When on, a drop that beats what you\'re wearing equips itself. Off by default — drops just go to the bag.'],
+    ['!armor', '[set name]', 'Preview an armour set: its five pieces, every bonus tier, which version you own of each, and what you\'re still missing. Bare <code>!armor</code> lists all five sets.'],
+    ['!relics', '', 'The relic board — every one-of-a-kind item and who currently holds it.'],
+    ['!droprelic', '', 'Release the relic you\'re holding back into the pool for someone else to win.'],
+  ]},
+  { id:'gold', title:'Gold &amp; the shop', sub:'Fights pay. The shop and the forge take it back.', cmds:[
+    ['!buy', '&lt;#&gt;', 'Buy a ware from the Arena Shop. It equips if it beats what you have, otherwise it drops into your bag. One purchase per ware per restock.'],
+    ['!store', '[on|off]', 'Show or hide the shop panel on screen. It restocks on a timer with three fresh wares.'],
+  ]},
+  { id:'raid', title:'Raid boss', sub:'One monster, one health pool, the whole chat chipping away.', cmds:[
+    ['!raidboss', '', 'Take your turn against the shared raid boss. Its health carries over from the last fighter — you\'re all wearing down the same monster. Dying is free.'],
+    ['!raidstatus', '', 'Current boss, phase, health remaining and how many fighters have taken a swing.'],
+    ['!raidrecap', '', 'The last raid\'s full ledger — top damage dealers with their XP, gold and loot.'],
+  ]},
+  { id:'royale', title:'Battle royale', sub:'Everyone in the colosseum at once. Runs when a mod opens the lobby.', cmds:[
+    ['!fight', '', 'Join the open arena with your real fighter, gear and level. Only works during the join window.'],
+    ['!attack', '@user', 'Rally the arena onto one target for a moment. Short cooldown per viewer.'],
+    ['!heal', '', 'A one-time self heal for the rest of the match. Spend it well.'],
+    ['!run', '', 'Flee the arena and take your chances.'],
+  ]},
+];
+
+const MODS = [
+  ['!battleroyale', '', 'Open the colosseum and start the join lobby.'],
+  ['!raidspawn', '[beast]', 'Spawn a raid boss. Auto-sizes its health pool from the active roster.'],
+  ['!raidend', '', 'Dismiss the current raid boss. The night\'s damage is still recorded.'],
+  ['!pitpanel', '', 'Toggle the live control panel — sliders for every balance knob. Or press P over the overlay.'],
+  ['!pitset', '&lt;knob&gt; &lt;value&gt;', 'Change any setting live from chat, e.g. <code>!pitset bossatk 45</code>.'],
+  ['!scaling', '&lt;0-250&gt;', 'Master monster-power dial. 100 is default.'],
+  ['!pitgive', '@user &lt;item&gt; [wear]', 'Grant an item into someone\'s stash. Add <code>wear</code> to equip it instead — the displaced piece is moved to their bag, never destroyed.'],
+  ['!setlevel', '@user &lt;lvl[:asc]&gt;', 'Rebuild a lost or corrupted character. Gear, gold and records are untouched.'],
+  ['!renameitem', 'old | new', 'Rename an item everywhere without destroying its rolls, bands or stars.'],
+  ['!banitem', '&lt;name&gt;', 'Purge an item from the game and from everyone holding it.'],
+  ['!pitexport', '', 'Send a full save backup to Discord as a file. Do this before any cache clear.'],
+  ['!fullscreen', '[on|off]', 'Swap between the mini arena and the full-screen colosseum view.'],
+];
+
+const chipsEl = document.getElementById('chips');
+const listEl  = document.getElementById('list');
+const qEl     = document.getElementById('q');
+let filter = 'all';
+
+function row(c){
+  const tag = c[3] ? `<span class="tag ${c[3].startsWith('lvl') ? 't-lvl' : 't-mod'}">${c[3]}</span>` : '';
+  const arg = c[1] ? ` <span class="arg">${c[1]}</span>` : '';
+  return `<div class="cmd" data-t="${(c[0]+' '+c[1]+' '+c[2]).replace(/<[^>]+>/g,'').toLowerCase().replace(/"/g,'')}">
+    <div class="name">${c[0]}${arg}${tag}</div>
+    <div class="desc">${c[2]}</div>
+  </div>`;
+}
+
+function render(){
+  const q = qEl.value.trim().toLowerCase();
+  let html = '', hits = 0;
+  for (const g of GROUPS){
+    if (filter !== 'all' && filter !== g.id) continue;
+    const rows = g.cmds.filter(c => !q || (c[0]+' '+c[1]+' '+c[2]).toLowerCase().includes(q));
+    if (!rows.length) continue;
+    hits += rows.length;
+    html += `<section id="${g.id}"><h2>${g.title}</h2><p class="sub">${g.sub}</p>
+      <div class="cmds">${rows.map(row).join('')}</div></section>`;
+  }
+  if (filter === 'all' || filter === 'mod'){
+    const rows = MODS.filter(c => !q || (c[0]+' '+c[1]+' '+c[2]).toLowerCase().includes(q));
+    if (rows.length){
+      hits += rows.length;
+      html += `<details class="mods" ${q || filter === 'mod' ? 'open' : ''}>
+        <summary>Moderator &amp; streamer commands (${rows.length})</summary>
+        <div class="cmds">${rows.map(row).join('')}</div></details>`;
+    }
+  }
+  listEl.innerHTML = hits ? html : `<div class="cmds"><div class="empty">Nothing matches “${qEl.value}”.</div></div>`;
+}
+
+chipsEl.innerHTML = [['all','Everything'], ...GROUPS.map(g => [g.id, g.title.replace('&amp;','&')]), ['mod','Mods']]
+  .map(([id,label]) => `<button class="chip" data-f="${id}" aria-pressed="${id==='all'}">${label}</button>`).join('');
+
+chipsEl.addEventListener('click', e => {
+  const b = e.target.closest('.chip'); if (!b) return;
+  filter = b.dataset.f;
+  chipsEl.querySelectorAll('.chip').forEach(c => c.setAttribute('aria-pressed', c === b));
+  render();
+});
+qEl.addEventListener('input', render);
+render();
+</script>
+</body>
+</html>
