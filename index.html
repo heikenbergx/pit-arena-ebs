@@ -295,6 +295,7 @@
         <h3>Lesser · standard · Greater</h3>
         <p>Many items exist in three power versions. <strong>Lesser</strong> pieces drop for newer fighters, <strong>Greater</strong> ones for veterans, with the plain version in between.</p>
         <p>The name tells you which you've got. A <em>Greater Bonewrought Cuirass</em> is the endgame version of the same piece.</p>
+        <p><strong>Player-named items can be bought up a version.</strong> <code>!liftitem weapon</code> (or <code>!liftitem 3</code> for a stash slot) spends gold to climb Lesser → standard → Greater. Your enhancement stars come with it. <code>!liftitem</code> on its own lists what you can lift and what it costs.</p>
       </div>
 
       <div class="card">
@@ -344,6 +345,7 @@
         <h3>Ascension</h3>
         <p>At the level cap, <code>!ascend</code> resets you to level 1 and grants a permanent stat bump plus a roman-numeral badge (✦ III) that rides next to your level forever.</p>
         <p>It also earns a <strong>naming token</strong>: <code>!nameitem</code> mints a brand-new item — named by you — into the drop pool for everybody, in all three power versions.</p>
+        <p>Holding an unspent token? The extension panel shows a teal <strong>✒ NAME</strong> badge next to your name, and <code>!ascend</code> will warn you once rather than quietly replacing it.</p>
         <p>Each ascension taxes your XP gain a little, so every climb back up is longer than the last.</p>
       </div>
 
@@ -395,6 +397,7 @@ const GROUPS = [
     ['!lockstash', '&lt;#&gt;', 'Pin a bag item so the full-bag auto-sell can never scrap it. Run it again to unlock.'],
     ['!upgrade', '&lt;slot&gt;', 'Spend gold to add a ★ to the piece you\'re wearing, up to five. Each star raises that item\'s own stats by 20% and shrinks its drawbacks. e.g. <code>!upgrade weapon</code>'],
     ['!autoequip', '[on|off]', 'When on, a drop that beats what you\'re wearing equips itself. Off by default — drops just go to the bag.'],
+    ['!liftitem', '[&lt;slot&gt; | &lt;#&gt;]', 'Spend gold to lift a <em>player-named</em> item one power version: Lesser → standard → Greater. Works on a worn slot or a stash number. Enhancement stars carry over. Bare <code>!liftitem</code> lists yours with prices.'],
     ['!armor', '[set name]', 'Preview an armour set: its five pieces, every bonus tier, which version you own of each, and what you\'re still missing. Bare <code>!armor</code> lists all five sets.'],
     ['!relics', '', 'The relic board — every one-of-a-kind item and who currently holds it.'],
     ['!droprelic', '', 'Release the relic you\'re holding back into the pool for someone else to win.'],
