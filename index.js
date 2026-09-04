@@ -10,9 +10,6 @@
  *
  * Everything the panel shows is precomputed by the overlay and stored as-is,
  * so this server never needs to know the game's rules — it's just a mailbox.
- *
- * It also hosts the bits leaderboard poller (see bits.js), which serves
- * GET /bits to the StreamElements goal bar overlay.
  */
 // Minimal .env loader (no dependency) — reads KEY=value lines if a .env exists.
 (function loadEnv() {
@@ -32,7 +29,6 @@ const express = require('express');
 const cors = require('cors');
 const store = require('./store');
 const twitch = require('./twitch');
-const { mountBits } = require('./bits');
 
 const app = express();
 app.use(express.json({ limit: '256kb' }));
@@ -55,13 +51,6 @@ store.init();
 
 const OVERLAY_SECRET = process.env.OVERLAY_SECRET || '';
 const DEV_LOGIN_QUERY = process.env.DEV_ALLOW_LOGIN_QUERY === '1';
-
-// ── Bits leaderboard poller ──────────────────────────────────────────────────
-// Adds GET /bits and GET /bits/health for the goal bar overlay. Mounted early
-// so it sits ahead of anything else and sets its own permissive CORS header,
-// since StreamElements is not a *.ext-twitch.tv origin. Does nothing at all if
-// the BITS_ environment variables are absent.
-mountBits(app);
 
 // ── Health check ─────────────────────────────────────────────────────────────
 app.get('/', (_req, res) => {
@@ -101,6 +90,22 @@ app.post('/players', (req, res) => {
 
 // ── READ: the panel asks "what do I own?" ────────────────────────────────────
 // Header:  Authorization: Bearer <twitch JWT from Twitch.ext.onAuthorized>
+//
+// ⚠ NEVER LET A READ BE CACHED. The panel polls one unchanging URL (/me) and express sends an
+// ETag but no Cache-Control, so a browser is entitled to apply heuristic freshness and serve
+// the previous body WITHOUT revalidating. That is invisible from the server side and looks
+// exactly like the overlay never posting: the panel shows a character frozen at whatever it
+// first fetched, while /players/:login proves the stored snapshot is current and correct.
+// Applies to every read path a client polls.
+app.use(['/me', '/players', '/actions'], (req, res, next) => {
+  if (req.method === 'GET') {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+  }
+  next();
+});
+
 app.get('/me', async (req, res) => {
   try {
     let login = null;
@@ -217,7 +222,6 @@ const server = app.listen(PORT, () => {
   console.log(`  panel read    : GET  /me                (Bearer twitch JWT)`);
   console.log(`  panel action  : POST /action           (Bearer twitch JWT)`);
   console.log(`  overlay drain : GET  /actions           (Bearer OVERLAY_SECRET)`);
-  console.log(`  goal bar feed : GET  /bits              (public, CORS open)`);
   console.log(`  twitch secret configured: ${twitch.hasSecret}`);
 });
 
