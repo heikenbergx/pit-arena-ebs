@@ -29,6 +29,7 @@ const express = require('express');
 const cors = require('cors');
 const store = require('./store');
 const twitch = require('./twitch');
+const { mountBits } = require('./bits');
 
 const app = express();
 app.use(express.json({ limit: '256kb' }));
@@ -51,6 +52,17 @@ store.init();
 
 const OVERLAY_SECRET = process.env.OVERLAY_SECRET || '';
 const DEV_LOGIN_QUERY = process.env.DEV_ALLOW_LOGIN_QUERY === '1';
+
+// ── Bits leaderboard poller ──────────────────────────────────────────────────
+// Adds GET /bits and GET /bits2 (plus /health on each) for the goal bar
+// overlays. Mounted early so it sits ahead of everything else, and it sets its
+// own permissive CORS header since StreamElements is not a *.ext-twitch.tv
+// origin. Does nothing at all if the BITS_ environment variables are absent.
+//
+// ⚠ THESE TWO LINES ARE EASY TO LOSE. If you ever paste over this file from an
+// older local copy, the require above and the call below go with it, and /bits
+// starts returning "Cannot GET /bits" while everything else keeps working.
+mountBits(app);
 
 // ── Health check ─────────────────────────────────────────────────────────────
 app.get('/', (_req, res) => {
@@ -111,7 +123,7 @@ app.use(['/me', '/players', '/actions'], (req, res, next) => {
 // was otherwise unanswerable without guessing from behaviour.
 app.get('/version', (req, res) => {
   res.set('Cache-Control', 'no-store');
-  res.json({ ok: true, build: 'ebs build 2 — no-store on reads', at: new Date().toISOString() });
+  res.json({ ok: true, build: 'ebs build 3 — no-store on reads + bits feed', at: new Date().toISOString() });
 });
 
 app.get('/me', async (req, res) => {
@@ -230,6 +242,7 @@ const server = app.listen(PORT, () => {
   console.log(`  panel read    : GET  /me                (Bearer twitch JWT)`);
   console.log(`  panel action  : POST /action           (Bearer twitch JWT)`);
   console.log(`  overlay drain : GET  /actions           (Bearer OVERLAY_SECRET)`);
+  console.log(`  goal bar feed : GET  /bits, /bits2      (public, CORS open)`);
   console.log(`  twitch secret configured: ${twitch.hasSecret}`);
 });
 
