@@ -106,6 +106,14 @@ app.use(['/me', '/players', '/actions'], (req, res, next) => {
   next();
 });
 
+// ── VERSION: open this in any browser to confirm what is actually deployed ───
+// No auth on purpose: it reveals nothing but a build string, and "is my push live yet?"
+// was otherwise unanswerable without guessing from behaviour.
+app.get('/version', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ ok: true, build: 'ebs build 2 — no-store on reads', at: new Date().toISOString() });
+});
+
 app.get('/me', async (req, res) => {
   try {
     let login = null;
