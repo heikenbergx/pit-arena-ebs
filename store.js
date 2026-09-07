@@ -1,107 +1,138 @@
 'use strict';
 /**
- * store.js — the "shared memory".
+ * store.js — snapshots and pending actions, namespaced per channel.
  *
- * Dead-simple flat-file JSON store, keyed by lowercased Twitch login (which is
- * exactly how the overlay keys its characters). One object per player holding
- * the panel-ready snapshot the overlay pushes up.
+ * ⚠ THE ONE CHANGE THAT MATTERS vs the single-tenant server: every key is scoped by
+ * channel id. Two streamers can both have a viewer called "bob" and they are different
+ * characters in different worlds. Nothing is global any more.
  *
- * This is intentionally the smallest thing that works for launch. When traffic
- * grows or you move to an ephemeral host (no persistent disk), replace the guts
- * of this file with a real database (Postgres, Redis, Upstash, etc.) — the rest
- * of the server only uses get()/set()/all(), so nothing else has to change.
+ * Storage is in-memory with an optional JSON file behind it, same as v1 — deliberately.
+ * Snapshots are disposable: the app re-posts everything whenever a fingerprint changes, so
+ * losing the file costs one re-post per fighter, not real data. Swap in Redis/SQLite only
+ * when a single process stops being enough.
  */
 const fs = require('fs');
 const path = require('path');
 
-const DATA_FILE = process.env.DATA_FILE || './data/players.json';
+const FILE = process.env.STORE_FILE || path.join(__dirname, 'data', 'snapshots.json');
+const MAX_ACTIONS_PER_CHANNEL = 200;
 
-let cache = {};       // login -> snapshot
+// channelId -> Map<login, snapshot>
+const players = new Map();
+// channelId -> array of pending actions
+const actions = new Map();
+// channelId -> last write timestamp (for /health and idle cleanup)
+const seen = new Map();
+
 let dirty = false;
-let writeTimer = null;
 
-// ── Panel action inbox (Phase 2) ─────────────────────────────────────────────
-// Transient, in-memory queue of actions the panel asked for (equip / lock).
-// The overlay drains it every couple seconds and runs each one. Not persisted:
-// if the server restarts, a couple of in-flight taps are lost — harmless (the
-// viewer just taps again). Capped so a spammer can't grow it without bound.
-let actions = [];
-const MAX_ACTIONS = 500;
-
-function load() {
-  try {
-    const raw = fs.readFileSync(DATA_FILE, 'utf8');
-    cache = JSON.parse(raw) || {};
-    console.log(`[store] loaded ${Object.keys(cache).length} players from ${DATA_FILE}`);
-  } catch (e) {
-    if (e.code === 'ENOENT') {
-      console.log(`[store] no data file yet at ${DATA_FILE} — starting empty`);
-      cache = {};
-    } else {
-      console.error('[store] load failed, starting empty:', e.message);
-      cache = {};
-    }
-  }
+function chan(map, channelId) {
+  const k = String(channelId);
+  if (!map.has(k)) map.set(k, map === players ? new Map() : []);
+  return map.get(k);
 }
 
-function persist() {
+function init() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(FILE, 'utf8'));
+    for (const [cid, obj] of Object.entries(raw.players || {})) {
+      players.set(cid, new Map(Object.entries(obj)));
+    }
+    for (const [cid, ts] of Object.entries(raw.seen || {})) seen.set(cid, ts);
+    console.log(`[store] loaded ${players.size} channel(s)`);
+  } catch (e) {
+    if (e.code !== 'ENOENT') console.warn('[store] load failed:', e.message);
+  }
+  // Actions are deliberately NOT persisted: a queued tap should not survive a restart and
+  // fire minutes later against a changed game state.
+  setInterval(flush, 10000);
+}
+
+function flush() {
   if (!dirty) return;
   dirty = false;
+  const out = { players: {}, seen: {} };
+  for (const [cid, m] of players) out.players[cid] = Object.fromEntries(m);
+  for (const [cid, ts] of seen) out.seen[cid] = ts;
   try {
-    fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
-    const tmp = DATA_FILE + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify(cache));
-    fs.renameSync(tmp, DATA_FILE);   // atomic-ish swap so a crash can't truncate
+    fs.mkdirSync(path.dirname(FILE), { recursive: true });
+    fs.writeFileSync(FILE + '.tmp', JSON.stringify(out));
+    fs.renameSync(FILE + '.tmp', FILE);
   } catch (e) {
-    console.error('[store] persist failed:', e.message);
-    dirty = true; // try again next tick
+    console.warn('[store] save failed:', e.message);
   }
 }
 
-// Debounced write so a burst of updates only hits disk once.
-function scheduleWrite() {
+function put(channelId, login, snapshot) {
+  chan(players, channelId).set(String(login).toLowerCase(), snapshot);
+  seen.set(String(channelId), Date.now());
   dirty = true;
-  if (writeTimer) return;
-  writeTimer = setTimeout(() => { writeTimer = null; persist(); }, 1500);
 }
 
-const key = (login) => String(login || '').trim().toLowerCase();
+function get(channelId, login) {
+  const m = players.get(String(channelId));
+  return m ? m.get(String(login).toLowerCase()) || null : null;
+}
+
+function clearChannel(channelId) {
+  const m = players.get(String(channelId));
+  const n = m ? m.size : 0;
+  players.delete(String(channelId));
+  actions.delete(String(channelId));
+  // ⚠ `seen` is deliberately KEPT. A season reset empties the roster; it does not mean the
+  // channel stopped running the arena, and dropping it here would flip every viewer's panel
+  // to "this channel isn't running the arena" until the app's next post.
+  dirty = true;
+  return n;
+}
+
+function countChannel(channelId) {
+  const m = players.get(String(channelId));
+  return m ? m.size : 0;
+}
+
+/**
+ * Has this channel's app EVER posted here?
+ *
+ * ⚠ THIS IS WHAT SEPARATES THE PANEL'S TWO "NOTHING" STATES. A viewer on a channel that has
+ * never run the arena must not be told to type !battle in chat — that advice can never work
+ * and makes the extension look broken. `seen` is stamped on every write, so a channel becomes
+ * known the first time its app posts a single fighter and stays known across restarts (it is
+ * persisted with the snapshots). Worst case after a lost store file: one stream's viewers see
+ * the "not set up" message until the app's first post, seconds later.
+ */
+function channelKnown(channelId) {
+  const k = String(channelId || '');
+  if (!k) return false;
+  return seen.has(k) || players.has(k);
+}
+
+function lastSeen(channelId) {
+  return seen.get(String(channelId || '')) || 0;
+}
+
+function pushAction(channelId, action) {
+  const q = chan(actions, channelId);
+  // Bound the queue: an app that is offline must not let taps pile up without limit.
+  if (q.length >= MAX_ACTIONS_PER_CHANNEL) return false;
+  q.push(action);
+  return true;
+}
+
+function drainActions(channelId) {
+  const k = String(channelId);
+  const q = actions.get(k) || [];
+  actions.set(k, []);
+  return q;
+}
+
+function stats() {
+  let fighters = 0;
+  for (const m of players.values()) fighters += m.size;
+  return { channels: players.size, fighters };
+}
 
 module.exports = {
-  init() { load(); },
-
-  get(login) {
-    return cache[key(login)] || null;
-  },
-
-  set(login, snapshot) {
-    const k = key(login);
-    if (!k) return;
-    cache[k] = Object.assign({}, snapshot, { login: k, updatedAt: Date.now() });
-    scheduleWrite();
-  },
-
-  all() { return cache; },
-
-  count() { return Object.keys(cache).length; },
-
-  // Wipe EVERY player snapshot (season reset). Returns how many were cleared.
-  clear() {
-    const n = Object.keys(cache).length;
-    cache = {};
-    actions = [];        // drop any pending panel taps too
-    scheduleWrite();
-    return n;
-  },
-
-  // ── action inbox ──
-  enqueueAction(action) {
-    if (actions.length >= MAX_ACTIONS) actions.shift();   // drop oldest under flood
-    actions.push(Object.assign({ ts: Date.now() }, action));
-  },
-  drainActions() { const a = actions; actions = []; return a; },
-  pendingActions() { return actions.length; },
-
-  // Flush on shutdown so nothing in the debounce window is lost.
-  flush() { persist(); }
+  init, flush, put, get, clearChannel, countChannel,
+  channelKnown, lastSeen, pushAction, drainActions, stats
 };
