@@ -59,6 +59,7 @@
   } catch { /* no .env — rely on real environment variables (how hosts inject them) */ }
 })();
 
+const https = require('https');
 const express = require('express');
 const cors = require('cors');
 const store = require('./store');
@@ -226,6 +227,70 @@ app.get('/config/key', (req, res) => {
       fighters: store.countChannel(claims.channel_id),
       live: channelKnown(claims.channel_id),
       lastSeen: store.lastSeen(claims.channel_id)
+    });
+  } catch (e) {
+    res.status(401).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
+// ⚠⚠ THIS MUST MATCH THE CLIENT ID IN THE APP'S oauth.js. It is the entire security of the
+// login route: see the client_id check in /config/key-oauth below.
+const OAUTH_CLIENT_ID = process.env.OAUTH_CLIENT_ID || 'ujoeohx1jk85xe6y12n3fmwj17e4vx';
+
+/** Ask Twitch who a user access token belongs to. Built-in https — no new dependency. */
+function validateTwitchToken(token) {
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      host: 'id.twitch.tv', path: '/oauth2/validate', method: 'GET',
+      headers: { Authorization: 'OAuth ' + token }
+    }, res => {
+      let body = '';
+      res.on('data', c => { body += c; });
+      res.on('end', () => {
+        if (res.statusCode === 401) return reject(new Error('that Twitch login has expired — try again'));
+        if (res.statusCode !== 200) return reject(new Error('Twitch rejected the login (' + res.statusCode + ')'));
+        try { resolve(JSON.parse(body)); } catch (e) { reject(new Error('unreadable response from Twitch')); }
+      });
+    });
+    req.on('error', e => reject(new Error('could not reach Twitch: ' + e.message)));
+    req.setTimeout(8000, () => req.destroy(new Error('Twitch timed out')));
+    req.end();
+  });
+}
+
+/**
+ * Trade a Twitch login for this channel's arena key.
+ *
+ * ⚠⚠ THE client_id CHECK BELOW IS NOT OPTIONAL AND MUST NEVER BE REMOVED.
+ * /oauth2/validate happily validates a token minted by ANY Twitch application. Without the
+ * check, anyone could take a token their own app obtained — from any user, for any purpose —
+ * and replay it here to be handed that user's arena key. Confirming the token was issued to
+ * OUR client id is what makes "Twitch says this is them" mean "they used our login button".
+ *
+ * ⚠ A user's own channel id IS their user id on Twitch, which is why no channel lookup is
+ * needed — and why this can only ever return the caller's own key.
+ */
+app.post('/config/key-oauth', async (req, res) => {
+  try {
+    if (!tenants.hasMaster()) {
+      return res.status(503).json({ ok: false, error: 'server not configured for keys' });
+    }
+    const token = String((req.body && req.body.token) || '').trim();
+    if (!token) return res.status(400).json({ ok: false, error: 'no login token sent' });
+
+    const v = await validateTwitchToken(token);
+    if (String(v.client_id || '') !== String(OAUTH_CLIENT_ID)) {
+      console.warn('[key-oauth] ⚠ token from a DIFFERENT client id:', v.client_id);
+      return res.status(403).json({ ok: false, error: 'that login came from a different application' });
+    }
+    if (!v.user_id) return res.status(403).json({ ok: false, error: 'Twitch did not identify that login' });
+
+    console.log(`[key-oauth] issued key to ${v.login} (${v.user_id})`);
+    res.json({
+      ok: true,
+      key: tenants.keyFor(v.user_id),
+      channelId: String(v.user_id),
+      login: v.login || ''
     });
   } catch (e) {
     res.status(401).json({ ok: false, error: String(e.message || e) });
