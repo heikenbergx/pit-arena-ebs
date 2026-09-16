@@ -134,6 +134,47 @@ const ACTION_TYPES = ['equip', 'lock', 'upgrade', 'battle', 'train', 'buy', 'asc
 // sends these exact strings, and the game's command paths expect them.
 const BATTLE_TIERS = ['battle', 'lt', 'boss', 'nightmare', 'raid'];
 
+/* ── TAP LIMITS: autoclickers ─────────────────────────────────────────────────
+ * Viewers have built autoclickers, so the panel is tapped continuously — including while the
+ * streamer is offline and nothing is draining. Three separate problems, three separate limits:
+ *
+ *   1. FAIRNESS (the real bug): the action queue is shared, so a clicker can fill it and lock
+ *      real viewers out. Handled per-login in store.pushAction.
+ *   2. BANDWIDTH: a tap makes the panel re-read /me immediately (~10-15KB). One clicker at
+ *      1/sec is ~40MB/hr, forever, and outbound is the ONE thing Render actually bills.
+ *      TAP_MIN_MS throttles the accepted taps and so the forced re-reads with them.
+ *   3. STALENESS: taps banked while the app is closed all fire on the next drain. Handled by
+ *      ACTION_TTL_MS in store.drainActions, plus the idle check below.
+ *
+ * ⚠ A THROTTLED TAP COSTS THE VIEWER NOTHING. The game re-checks everything anyway, and the
+ * panel already surfaces an action error — so the worst case for a human is one ignored tap.
+ */
+const TAP_MIN_MS = Number(process.env.TAP_MIN_MS || 1200);
+const IDLE_REJECT_MS = Number(process.env.IDLE_REJECT_MS || 10 * 60 * 1000);
+const tapLast = new Map();               // 'channelId|login' -> last ACCEPTED tap, ms
+
+function tapTooFast(cid, login) {
+  const k = cid + '|' + login;
+  const now = Date.now();
+  if (now - (tapLast.get(k) || 0) < TAP_MIN_MS) return true;
+  tapLast.set(k, now);
+  // Prune so a popular channel can't grow this without bound.
+  if (tapLast.size > 5000) {
+    for (const [kk, t] of tapLast) if (now - t > 600000) tapLast.delete(kk);
+  }
+  return false;
+}
+
+// ⚠ FAILS OPEN ON PURPOSE. A channel we have never seen a write from returns 0 here — that is
+// the legacy bridge and the first seconds after a deploy, NOT an idle app. Rejecting those
+// would hand every viewer on your own channel a refusal for reasons that have nothing to do
+// with them. Only a channel that HAS posted, and then went quiet, is treated as idle.
+function arenaIdle(cid) {
+  const t = store.lastSeen(cid);
+  if (!t) return false;
+  return (Date.now() - t) > IDLE_REJECT_MS;
+}
+
 /**
  * Resolve the channel for a WRITE-side request (the streamer's app), or answer 401.
  * Returns the channel id, or null when it has already sent the response.
@@ -202,7 +243,7 @@ app.get('/version', (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json({
     ok: true,
-    build: 'ebs multi-tenant build 1 — per-channel keys + no-store on reads + bits feed',
+    build: 'ebs multi-tenant build 2 — per-channel keys + no-store on reads + bits feed + tap limits',
     tenancy: 'multi',
     at: new Date().toISOString()
   });
@@ -406,6 +447,12 @@ app.post('/action', async (req, res) => {
     if (!channelKnown(channelId)) {
       return res.status(409).json({ ok: false, error: 'this channel is not running the arena' });
     }
+    if (arenaIdle(channelId)) {
+      return res.status(409).json({ ok: false, error: 'the arena is not running right now — your taps will work when the stream is live' });
+    }
+    if (tapTooFast(channelId, login)) {
+      return res.status(429).json({ ok: false, error: 'one at a time — give the arena a second' });
+    }
 
     const b = req.body || {};
     const type = String(b.type || '');
@@ -438,8 +485,13 @@ app.post('/action', async (req, res) => {
       if (type === 'lock') action.want = (typeof b.want === 'boolean') ? b.want : null;
     }
 
-    const ok = store.pushAction(channelId, action);
-    if (!ok) return res.status(429).json({ ok: false, error: 'action queue full — is the app running?' });
+    const r = store.pushAction(channelId, action);
+    if (r === 'flood') {
+      return res.status(429).json({ ok: false, error: 'you have too many taps waiting — let the arena catch up' });
+    }
+    if (r !== true) {
+      return res.status(429).json({ ok: false, error: 'action queue full — is the app running?' });
+    }
     res.json({ ok: true, queued: true });
   } catch (e) {
     console.error('[/action]', e.message);

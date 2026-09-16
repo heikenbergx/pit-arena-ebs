@@ -16,6 +16,17 @@ const path = require('path');
 
 const FILE = process.env.STORE_FILE || path.join(__dirname, 'data', 'snapshots.json');
 const MAX_ACTIONS_PER_CHANNEL = 200;
+// ⚠ PER-LOGIN CAP. The 200 slots above are SHARED ACROSS ALL VIEWERS, so without this one
+// autoclicker tapping twice a second owns the entire queue inside two minutes and every real
+// viewer is answered "action queue full". A human never has more than a couple outstanding.
+const MAX_ACTIONS_PER_LOGIN = Number(process.env.MAX_ACTIONS_PER_LOGIN || 8);
+// ⚠ AGE LIMIT. A tap is a request about the CURRENT game state; one queued while the app was
+// closed and then fired on the next drain is exactly why the arena "starts fighting immediately"
+// the moment it comes up. Dropped at DRAIN time, not push time, so a viewer tapping during a
+// brief app restart still lands.
+const ACTION_TTL_MS = Number(process.env.ACTION_TTL_MS || 3 * 60 * 1000);
+let staleDropped = 0;
+let loginThrottled = 0;
 
 // channelId -> Map<login, snapshot>
 const players = new Map();
@@ -114,7 +125,12 @@ function lastSeen(channelId) {
 function pushAction(channelId, action) {
   const q = chan(actions, channelId);
   // Bound the queue: an app that is offline must not let taps pile up without limit.
-  if (q.length >= MAX_ACTIONS_PER_CHANNEL) return false;
+  if (q.length >= MAX_ACTIONS_PER_CHANNEL) return 'full';
+  if (action && action.login) {
+    let mine = 0;
+    for (let i = 0; i < q.length; i++) if (q[i].login === action.login) mine++;
+    if (mine >= MAX_ACTIONS_PER_LOGIN) { loginThrottled++; return 'flood'; }
+  }
   q.push(action);
   return true;
 }
@@ -123,13 +139,23 @@ function drainActions(channelId) {
   const k = String(channelId);
   const q = actions.get(k) || [];
   actions.set(k, []);
-  return q;
+  const cut = Date.now() - ACTION_TTL_MS;
+  // An action with no `at` is from an older client — keep it rather than silently eat it.
+  const fresh = q.filter(a => !a || !a.at || a.at >= cut);
+  const dropped = q.length - fresh.length;
+  if (dropped > 0) {
+    staleDropped += dropped;
+    console.log(`[store] dropped ${dropped} stale action(s) for ${k} (older than ${Math.round(ACTION_TTL_MS / 1000)}s)`);
+  }
+  return fresh;
 }
 
 function stats() {
   let fighters = 0;
   for (const m of players.values()) fighters += m.size;
-  return { channels: players.size, fighters };
+  let pendingActions = 0;
+  for (const q of actions.values()) pendingActions += q.length;
+  return { channels: players.size, fighters, pendingActions, staleDropped, loginThrottled };
 }
 
 module.exports = {
