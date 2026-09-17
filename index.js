@@ -6,7 +6,7 @@
  * This file is the v1 server (twitch-extension/server/index.js) plus channel scoping. It is
  * NOT a fresh design: everything v1 learned the hard way is carried over deliberately, and
  * an earlier draft of this file had LOST three of those things. If you ever re-merge, check
- * all four of these are still present:
+ * all five of these are still present:
  *   1. mountBits(app), mounted EARLY  — without it /bits dies and the Bits goal bars break.
  *   2. no-store headers on GET reads  — without them a viewer's panel freezes on its first
  *                                       fetched body (the original "panel doesn't work" bug).
@@ -14,6 +14,9 @@
  *   4. BATTLE_TIERS = battle|lt|...   — the panel sends 'battle' and 'lt'. A draft used
  *                                       'fodder'/'veteran'/'lieutenant' and would have
  *                                       rejected every ordinary battle tap as 'unknown tier'.
+ *   5. mountHeikWatch(app)            — the username watcher. Silently stops watching if the
+ *                                       loader or the call below is lost, and nothing else
+ *                                       breaks, so you would never notice.
  *
  * ⚠ NOTE ON NAMING: the build string below says "v2" meaning THIS SERVER'S SECOND DESIGN
  * (single-tenant → multi-tenant). It has nothing to do with Twitch EXTENSION versions
@@ -80,6 +83,23 @@ try {
 } catch (e) {
   console.error('[ebs] ⚠ bits.js NOT FOUND — /bits and /bits2 will 404 and the Bits goal bar');
   console.error('[ebs]   overlays will stop updating. The arena is unaffected. Reason:', e.message);
+}
+
+// ⚠⚠ HEIKWATCH IS LOADED DEFENSIVELY TOO — same reasoning as bits above.
+// heikwatch.js watches who currently holds a Twitch username and pings Discord when that
+// account disappears. It is entirely self-contained: no store, no tenants, no auth, and every
+// path inside it is wrapped so it can never take the arena down.
+//
+// ⚠ IT FAILS QUIETLY BY NATURE. If this loader or the mount call below is lost, nothing
+// visibly breaks — the watcher just stops watching, forever, with no error anywhere. That is
+// exactly why /heikwatch/health exists and why it posts to Discord on every boot.
+let mountHeikWatch = null;
+try {
+  const hw = require('./heikwatch');
+  mountHeikWatch = (typeof hw === 'function') ? hw : hw.mountHeikWatch;
+} catch (e) {
+  console.error('[ebs] ⚠ heikwatch.js NOT FOUND — the username watcher is NOT running.');
+  console.error('[ebs]   Nothing else is affected. Reason:', e.message);
 }
 
 const app = express();
@@ -208,6 +228,15 @@ function writeChannel(req, res) {
 // from YOUR credentials. Another streamer's app never touches it, and their key cannot reach it.
 if (mountBits) mountBits(app);
 
+// ── Username watcher ─────────────────────────────────────────────────────────
+// Adds GET /heikwatch, /heikwatch/health and /heikwatch/report, and starts a 15-minute timer
+// that checks whether the account holding WATCH_USERNAME still exists. Does nothing useful if
+// the WATCH_ env vars are absent, but still mounts and still reports on /heikwatch/health.
+//
+// ⚠ SAME TRAP AS BITS: the loader above and this call are easy to lose when pasting an older
+// copy of index.js, and losing them breaks NOTHING visible — the watcher just goes silent.
+if (mountHeikWatch) mountHeikWatch(app);
+
 // ── Health ───────────────────────────────────────────────────────────────────
 app.get('/', (_req, res) => {
   res.json({
@@ -243,8 +272,10 @@ app.get('/version', (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json({
     ok: true,
-    build: 'ebs multi-tenant build 2 — per-channel keys + no-store on reads + bits feed + tap limits',
+    build: 'ebs multi-tenant build 3 — per-channel keys + no-store on reads + bits feed + tap limits + heikwatch',
     tenancy: 'multi',
+    bitsMounted: !!mountBits,
+    heikWatchMounted: !!mountHeikWatch,
     at: new Date().toISOString()
   });
 });
@@ -531,6 +562,7 @@ const server = app.listen(PORT, () => {
   console.log(`  drain  : GET  /actions          (Bearer arena key)`);
   console.log(`  key    : GET  /config/key       (Bearer twitch JWT, broadcaster)`);
   console.log(`  bits   : GET  /bits, /bits2     (public, CORS open)`);
+  console.log(`  watch  : GET  /heikwatch        (public, ${mountHeikWatch ? 'mounted' : 'NOT MOUNTED'})`);
   console.log(`  keys configured   : ${tenants.hasMaster()}`);
   console.log(`  twitch configured : ${twitch.hasSecret}`);
   if (LEGACY_SECRET && LEGACY_CHANNEL) {
